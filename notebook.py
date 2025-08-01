@@ -11,6 +11,7 @@ import networkx as nx
 import ast
 import asyncio
 import logging
+import nbformat
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFrame,
     QTextEdit, QTextBrowser, QPushButton, QToolBar, QScrollArea, QLabel,
@@ -180,10 +181,8 @@ class BaseCell(QFrame):
         self.toolbar.addAction(delete_action)
 
     def set_executing_state(self, is_executing: bool):
-        if is_executing:
-            self.setStyleSheet("QFrame { border: 1px solid #3498db; }")
-        else:
-            self.setStyleSheet("")
+        if is_executing: self.setStyleSheet("QFrame { border: 1px solid #3498db; }")
+        else: self.setStyleSheet("")
 
 class TextEditorCell(BaseCell):
     def __init__(self):
@@ -201,54 +200,36 @@ class TextEditorCell(BaseCell):
     def _update_editor_height(self):
         if self.editor and self._manual_height is None:
             doc_height = self.editor.document().size().height()
-            new_height = doc_height + 15
-            self.editor.setFixedHeight(max(40, int(new_height)))
+            self.editor.setFixedHeight(max(40, int(doc_height + 15)))
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton and event.position().y() > self.height() - 10:
-            self._is_resizing = True
-            self._resize_start_pos = event.globalPosition()
-            self._manual_height = self.editor.height()
+            self._is_resizing = True; self._resize_start_pos = event.globalPosition(); self._manual_height = self.editor.height()
         super().mousePressEvent(event)
-
     def mouseMoveEvent(self, event: QMouseEvent):
         if self._is_resizing:
             delta = event.globalPosition() - self._resize_start_pos
             new_height = self._manual_height + delta.y()
-            if new_height > 40:
-                self.editor.setFixedHeight(new_height)
+            if new_height > 40: self.editor.setFixedHeight(new_height)
         super().mouseMoveEvent(event)
-
     def mouseReleaseEvent(self, event: QMouseEvent):
-        if self._is_resizing:
-            self._is_resizing = False
-            self._manual_height = self.editor.height()
+        if self._is_resizing: self._is_resizing = False; self._manual_height = self.editor.height()
         super().mouseReleaseEvent(event)
-
     def mouseDoubleClickEvent(self, event: QMouseEvent):
-        if event.position().y() > self.height() - 10:
-            self._manual_height = None
-            self._update_editor_height()
+        if event.position().y() > self.height() - 10: self._manual_height = None; self._update_editor_height()
         super().mouseDoubleClickEvent(event)
-
     def on_cursor_activity(self):
         if not self.editor or self.editor.isReadOnly(): return
         cursor = self.editor.textCursor()
         self.cursor_activity.emit(self.cell_id, cursor.position(), cursor.anchor())
-
     def update_remote_cursor(self, client_id: str, cursor_pos: int, selection_end: int):
         if not self.editor: return
         extra_selections = [sel for cid, sel in self.remote_cursors.items() if cid != client_id]
-        selection = QTextEdit.ExtraSelection()
-        selection.format.setBackground(get_color_for_client(client_id))
-        cursor = self.editor.textCursor()
-        cursor.setPosition(cursor_pos)
-        if cursor_pos != selection_end:
-             cursor.setPosition(selection_end, QTextCursor.MoveMode.KeepAnchor)
-        else:
-             selection.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
-        selection.cursor = cursor
-        extra_selections.append(selection)
+        selection = QTextEdit.ExtraSelection(); selection.format.setBackground(get_color_for_client(client_id))
+        cursor = self.editor.textCursor(); cursor.setPosition(cursor_pos)
+        if cursor_pos != selection_end: cursor.setPosition(selection_end, QTextCursor.MoveMode.KeepAnchor)
+        else: selection.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
+        selection.cursor = cursor; extra_selections.append(selection)
         self.remote_cursors[client_id] = selection
         self.editor.setExtraSelections(extra_selections)
 
@@ -259,13 +240,10 @@ class MarkdownCell(TextEditorCell):
         self.content_layout.addWidget(self.editor); self.content_layout.addWidget(self.renderer)
         self.setup_editor_signals()
         self.editor.textChanged.connect(self.on_text_changed)
-        self.render_markdown()
-        self._update_editor_height()
-
+        self.render_markdown(); self._update_editor_height()
     def on_text_changed(self):
         if not self.editor.isReadOnly(): self.content_changed.emit(self)
         self.render_markdown()
-
     def get_content(self) -> str: return self.editor.toPlainText()
     def set_content(self, content: str, from_remote: bool = False):
         if from_remote: self.editor.setReadOnly(True)
@@ -285,46 +263,29 @@ class CodeCell(TextEditorCell):
         self.kernel = kernel
         self.execution_worker = None; self.is_test_cell = False
         self.defined_vars = set(); self.dependencies = set()
-        
-        self.editor = QTextEdit(content)
-        self.output_area = QTextBrowser()
-        
-        header_layout = QHBoxLayout()
-        self.test_checkbox = QCheckBox("Mark as Test")
-        header_layout.addStretch()
-        header_layout.addWidget(self.test_checkbox)
-        
-        self.content_layout.addLayout(header_layout)
-        self.content_layout.addWidget(self.editor, 1)
-        self.content_layout.addWidget(self.output_area)
-        
+        self.editor = QTextEdit(content); self.output_area = QTextBrowser()
+        header_layout = QHBoxLayout(); self.test_checkbox = QCheckBox("Mark as Test")
+        header_layout.addStretch(); header_layout.addWidget(self.test_checkbox)
+        self.content_layout.addLayout(header_layout); self.content_layout.addWidget(self.editor, 1); self.content_layout.addWidget(self.output_area)
         self.setup_editor_signals()
         self.test_checkbox.toggled.connect(self.on_test_checkbox_toggled)
         self.editor.textChanged.connect(self.on_text_changed)
-        self.synchronize_test_state()
-        self._update_editor_height()
-
+        self.synchronize_test_state(); self._update_editor_height()
         run_action = QAction(create_icon_from_svg(SVG_ICONS["run_cell"]), "Run Cell", self)
         run_action.setToolTip("Execute this cell and any other cells that depend on it.")
         run_action.triggered.connect(lambda: self.execution_requested.emit(self))
         self.toolbar.addAction(run_action)
 
     def contextMenuEvent(self, event):
-        """Creates a right-click context menu for the code cell."""
         context_menu = QMenu(self)
         refactor_action = context_menu.addAction("Vibe Check: Refactor Code")
         context_menu.addSeparator()
         generate_tests_action = context_menu.addAction("Generate Tests")
         generate_docstring_action = context_menu.addAction("Generate Docstring")
-        
         action = context_menu.exec(event.globalPos())
-        
-        if action == refactor_action:
-            self.refactor_requested.emit(self)
-        elif action == generate_tests_action:
-            self.generate_action_requested.emit(self, "tests")
-        elif action == generate_docstring_action:
-            self.generate_action_requested.emit(self, "docstring")
+        if action == refactor_action: self.refactor_requested.emit(self)
+        elif action == generate_tests_action: self.generate_action_requested.emit(self, "tests")
+        elif action == generate_docstring_action: self.generate_action_requested.emit(self, "docstring")
 
     def on_text_changed(self):
         if not self.editor.isReadOnly():
@@ -333,53 +294,38 @@ class CodeCell(TextEditorCell):
         self.synchronize_test_state()
 
     def analyze(self):
-        """Analyzes the code to find dependencies and defined variables."""
         self.defined_vars, self.dependencies = analyze_code_dependencies(self.get_content())
 
     def on_test_checkbox_toggled(self, is_checked):
-        self.is_test_cell = is_checked
-        self.editor.blockSignals(True)
-        current_text = self.get_content()
-        has_comment = current_text.lstrip().startswith("#| test")
-        if is_checked and not has_comment:
-            self.editor.setPlainText(f"#| test\n{current_text}")
+        self.is_test_cell = is_checked; self.editor.blockSignals(True)
+        current_text = self.get_content(); has_comment = current_text.lstrip().startswith("#| test")
+        if is_checked and not has_comment: self.editor.setPlainText(f"#| test\n{current_text}")
         elif not is_checked and has_comment:
             lines = current_text.splitlines()
-            if lines and lines[0].strip() == "#| test":
-                self.editor.setPlainText("\n".join(lines[1:]))
-        self.editor.blockSignals(False)
-        self.update_style()
-        self.content_changed.emit(self)
+            if lines and lines[0].strip() == "#| test": self.editor.setPlainText("\n".join(lines[1:]))
+        self.editor.blockSignals(False); self.update_style(); self.content_changed.emit(self)
 
     def synchronize_test_state(self):
         has_comment = self.get_content().lstrip().startswith("#| test")
-        self.test_checkbox.blockSignals(True)
-        self.test_checkbox.setChecked(has_comment)
-        self.test_checkbox.blockSignals(False)
-        self.is_test_cell = has_comment
-        self.update_style()
+        self.test_checkbox.blockSignals(True); self.test_checkbox.setChecked(has_comment); self.test_checkbox.blockSignals(False)
+        self.is_test_cell = has_comment; self.update_style()
 
     def update_style(self):
         if self.is_test_cell: self.setStyleSheet("CodeCell { background-color: #2a3a2a; }")
         else: self.setStyleSheet("")
 
     def execute(self):
-        self.set_executing_state(True)
-        self.output_area.setText("Executing..."); self.output_area.show()
+        self.set_executing_state(True); self.output_area.setText("Executing..."); self.output_area.show()
         self.execution_worker = ExecutionWorker(self.kernel, self.get_content())
-        self.execution_worker.result_ready.connect(self.on_execution_complete)
-        self.execution_worker.start()
+        self.execution_worker.result_ready.connect(self.on_execution_complete); self.execution_worker.start()
 
     def on_execution_complete(self, result: dict):
-        self.set_executing_state(False)
-        self.output_area.clear()
+        self.set_executing_state(False); self.output_area.clear()
         output_html = ""
         for item in result.get("outputs", []):
             text_content = ansi_to_html(item.get("text", ""))
-            if item['type'] == 'error':
-                output_html += f'<pre style="color:#e74c3c;">{text_content}</pre>'
-            else:
-                output_html += f'<pre>{text_content}</pre>'
+            if item['type'] == 'error': output_html += f'<pre style="color:#e74c3c;">{text_content}</pre>'
+            else: output_html += f'<pre>{text_content}</pre>'
         self.output_area.setHtml(output_html)
         self.execution_finished.emit(self.cell_id, result)
 
@@ -388,8 +334,7 @@ class CodeCell(TextEditorCell):
         if from_remote: self.editor.setReadOnly(True)
         self.editor.setPlainText(content)
         if from_remote: self.editor.setReadOnly(False)
-        self.synchronize_test_state()
-        self._update_editor_height()
+        self.synchronize_test_state(); self._update_editor_height()
     def to_dict(self) -> dict: return {"type": "code", "content": self.get_content()}
 
 class NotebookWidget(QWidget):
@@ -635,23 +580,45 @@ class NotebookWidget(QWidget):
     def save_to_file(self, path: str):
         self.file_path = path
         try:
-            with open(path, 'w', encoding='utf-8') as f: json.dump(self.to_dict(), f, indent=4)
+            with open(path, 'w', encoding='utf-8') as f:
+                if path.endswith('.ipynb'):
+                    nb = nbformat.v4.new_notebook()
+                    nb['cells'] = [nbformat.v4.new_code_cell(cell.get_content()) if isinstance(cell, CodeCell) else nbformat.v4.new_markdown_cell(cell.get_content()) for cell in [self.cells_by_id[cid] for cid in self.cell_order]]
+                    nbformat.write(nb, f)
+                else:
+                    json.dump(self.to_dict(), f, indent=4)
             self.set_dirty(False)
-        except IOError as e: QMessageBox.critical(self, "Save Error", f"Failed to save notebook: {e}")
+        except Exception as e: QMessageBox.critical(self, "Save Error", f"Failed to save notebook: {e}")
     def load_from_file(self, path: str):
         self.file_path = path
         try:
-            with open(path, 'r', encoding='utf-8') as f: data = json.load(f)
-            for i in range(self.cell_layout.count()): self.cell_layout.itemAt(i).widget().deleteLater()
+            while self.cell_layout.count():
+                item = self.cell_layout.takeAt(0)
+                widget = item.widget()
+                if widget: widget.deleteLater()
             self.cells_by_id.clear(); self.cell_order.clear()
-            for cell_data in data.get("cells", []): self.add_cell(cell_data['type'], cell_data['content'])
-            self.set_dirty(False)
-        except (IOError, json.JSONDecodeError) as e: QMessageBox.critical(self, "Load Error", f"Failed to load notebook: {e}")
+            with open(path, 'r', encoding='utf-8') as f:
+                content_str = f.read()
+                try:
+                    nb_node = nbformat.reads(content_str, as_version=4)
+                    for cell in nb_node.cells:
+                        self.add_cell(cell.cell_type, "".join(cell.source) if isinstance(cell.source, list) else cell.source)
+                except Exception:
+                    try:
+                        data = json.loads(content_str)
+                        for cell_data in data.get("cells", []):
+                            self.add_cell(cell_data.get('type', 'code'), cell_data.get('content', ''))
+                    except json.JSONDecodeError as e:
+                        raise ValueError(f"File is not a valid notebook format. Error: {e}")
+            self.set_dirty(False); self.rebuild_dependency_graph()
+        except Exception as e:
+            logging.error(f"Failed to load notebook from {path}: {e}", exc_info=True)
+            QMessageBox.critical(self, "Load Error", f"Failed to load notebook:\n{e}")
     def export_to_script(self):
         if not self.file_path:
             QMessageBox.warning(self, "Save Notebook", "Please save the notebook before exporting.")
             return
-        default_path = self.file_path.replace(".ipynb.json", ".py")
+        default_path = self.file_path.replace(".ipynb.json", ".py").replace(".ipynb", ".py")
         save_path, _ = QFileDialog.getSaveFileName(self, "Export to Python Script", default_path, "Python Files (*.py)")
         if not save_path: return
         script_content = f"# --- Exported from {os.path.basename(self.file_path)} ---\n\n"

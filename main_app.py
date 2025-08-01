@@ -55,6 +55,7 @@ try:
     from file_browser import FileBrowserWidget
     from terminal_widget import TerminalWidget
     from debugger_widget import DebuggerWidget
+    from scratchpad_widget import ScratchpadWidget
     from llm_interface import InferenceEngine
 except ImportError as e:
     logging.critical(f"Failed to import a required application module: {e.name}. Please ensure all .py files are in the same directory.")
@@ -77,7 +78,7 @@ class MainWindow(QMainWindow):
         self.all_models = all_models
         
         self.setup_chat_panel()
-        self.setup_file_browser()
+        self.setup_file_browser_and_scratchpad()
         self.setup_bottom_panels()
         self.setup_ui()
         self.create_menus()
@@ -122,20 +123,30 @@ class MainWindow(QMainWindow):
         self.chat_dock = QDockWidget("AI Chat", self)
         self.chat_panel = ChatPanel()
         self.chat_panel.insert_code_in_notebook.connect(self.on_insert_code_requested)
+        self.chat_panel.add_to_scratchpad.connect(self.on_add_to_scratchpad_requested)
         self.chat_dock.setWidget(self.chat_panel)
         self.chat_dock.setFeatures(QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
         logging.info("Chat panel setup complete.")
         
-    def setup_file_browser(self):
-        logging.info("Setting up file browser...")
+    def setup_file_browser_and_scratchpad(self):
+        logging.info("Setting up left-side panels...")
+        
         self.file_browser_dock = QDockWidget("Context Files", self)
         self.file_browser = FileBrowserWidget()
         self.file_browser.context_files_changed.connect(self.chat_panel.set_file_context)
         self.file_browser_dock.setWidget(self.file_browser)
         self.file_browser_dock.setFeatures(QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.file_browser_dock)
-        logging.info("File browser setup complete.")
+
+        self.scratchpad_dock = QDockWidget("Scratchpad", self)
+        self.scratchpad_panel = ScratchpadWidget()
+        self.scratchpad_dock.setWidget(self.scratchpad_panel)
+        self.scratchpad_dock.setFeatures(QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
+        
+        self.tabifyDockWidget(self.file_browser_dock, self.scratchpad_dock)
+        
+        logging.info("Left-side panels setup complete.")
 
     def setup_bottom_panels(self):
         logging.info("Setting up bottom panels...")
@@ -165,6 +176,11 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.warning(self, "No Active Notebook", "Please open or select a notebook tab to insert code.")
 
+    def on_add_to_scratchpad_requested(self, code: str):
+        """Handles the request from the chat panel to add code to the scratchpad."""
+        self.scratchpad_panel.append_text(code)
+        self.status_bar.showMessage("Code added to Scratchpad.", 3000)
+
     def create_menus(self):
         logging.info("Creating menus...")
         menu_bar = self.menuBar()
@@ -183,6 +199,7 @@ class MainWindow(QMainWindow):
         view_menu = menu_bar.addMenu("&View")
         toggle_chat_action = self.chat_dock.toggleViewAction(); toggle_chat_action.setText("Toggle Chat Panel"); view_menu.addAction(toggle_chat_action)
         toggle_files_action = self.file_browser_dock.toggleViewAction(); toggle_files_action.setText("Toggle File Browser"); view_menu.addAction(toggle_files_action)
+        toggle_scratchpad_action = self.scratchpad_dock.toggleViewAction(); toggle_scratchpad_action.setText("Toggle Scratchpad"); view_menu.addAction(toggle_scratchpad_action)
         toggle_bottom_panel_action = self.bottom_dock.toggleViewAction(); toggle_bottom_panel_action.setText("Toggle Console Panel"); view_menu.addAction(toggle_bottom_panel_action)
         view_menu.addSeparator()
         
@@ -312,7 +329,7 @@ class MainWindow(QMainWindow):
         self.notebook_tabs[notebook_widget.notebook_id] = index
 
     def open_notebook_file(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Open Notebook", "", "Notebook Files (*.ipynb.json)")
+        path, _ = QFileDialog.getOpenFileName(self, "Open Notebook", "", "Notebook Files (*.ipynb *.ipynb.json)")
         if path:
             notebook_widget = NotebookWidget(file_path=path)
             index = self.add_tab(notebook_widget, os.path.basename(path), "notebook.png")

@@ -1,0 +1,16 @@
+#© 2025 Colt McVey
+#Lists all Python dependencies required to run the CRAP application.
+pyside6
+jupyter_client
+networkx
+pygments
+markdown2
+websockets
+aiohttp
+numpy
+matplotlib
+pandas
+pyinstaller
+pyvan
+scikit-learn
+nbformat
